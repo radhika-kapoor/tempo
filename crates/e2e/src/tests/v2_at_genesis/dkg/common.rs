@@ -121,6 +121,26 @@ pub(crate) fn assert_no_dkg_failures(context: &Context) {
     }
 }
 
+/// Sums the value of every metric whose name ends with `suffix` across all
+/// validator metric lines.  Useful for asserting that a counter has been
+/// incremented by at least one node.
+pub(crate) fn sum_metric_with_suffix(context: &Context, suffix: &str) -> u64 {
+    let metrics = context.encode();
+    let mut total = 0u64;
+
+    for line in metrics.lines() {
+        let Some((metric, value)) = parse_metric_line(line) else {
+            continue;
+        };
+
+        if metric.ends_with(suffix) {
+            total += value;
+        }
+    }
+
+    total
+}
+
 /// Asserts that at least one validator has skipped rounds (indicating sync occurred).
 #[track_caller]
 pub(crate) fn assert_skipped_rounds(context: &Context) {
