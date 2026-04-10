@@ -589,17 +589,29 @@ where
         should_skip_round
     }
 
-    /// Handles a finalized block within the current DKG round.
+    /// Handles a finalized block.
     ///
-    /// 1. Validates that the block belongs to the current epoch (ignores prior-epoch
-    ///    blocks; errors on future-epoch blocks).
-    /// 2. Executes phase-specific dealer actions:
-    ///    - Early: if we are a dealer, distribute DKG shares to players.
-    ///    - Midpoint / Late: if we are a dealer, finalize the dealer state.
-    /// 3. Dispatches to [`Self::process_mid_epoch_block`] for non-boundary blocks,
-    ///    returning `Ok(None)`.
-    /// 4. Dispatches to [`Self::resolve_epoch_outcome`] for the last block of the
-    ///    epoch, returning `Ok(Some(new_state))`.
+    /// Returns a new [`State`] after finalizing the boundary block of the epoch.
+    ///
+    /// Some block heights are special cased:
+    ///
+    /// + first height of an epoch: notify the epoch manager that the previous
+    ///   epoch can be shut down.
+    /// + last height of an epoch:
+    ///     1. notify the epoch manager that a new epoch can be entered;
+    ///     2. prepare for the state of the next iteration by finalizing the current
+    ///        DKG round and reading the next players (players in the DKG round after
+    ///        the immediately next one) from the smart contract.
+    ///
+    /// The processing of all other blocks depends on which part of the epoch
+    /// they fall in:
+    ///
+    /// + first half: if we are a dealer, distribute the generated DKG shares
+    ///   to the players and collect their acks. If we are a player, receive
+    ///   DKG shares and respond with an ack.
+    /// + exact middle of an epoch: if we are a dealer, generate the dealer log
+    ///   of the DKG ceremony.
+    /// + second half of the epoch: read dealer logs from blocks
     #[instrument(
         parent = &cause,
         skip_all,
@@ -690,8 +702,19 @@ where
             .map(Some)
     }
 
-    /// Handles a non-boundary block: reads any dealer log from `extra_data`,
-    /// then appends the block to the epoch journal.
+    /// Handles the second half of the epoch.
+    ///
+    /// During the Midpoint and Late phases each dealer node writes its signed
+    /// log into the extra data field of a finalized block. On every such
+    /// block this function:
+    ///
+    /// 1. Reads the dealer log from the block's extra data (if present) and
+    ///    persists it to the epoch journal so that all dealer logs are
+    ///    available at the boundary block to complete the ceremony.
+    /// 2. If the log belongs to this node, clears the dealer's own finalized
+    ///    log from in-memory state so it is not written to a block again.
+    /// 3. Appends the block itself to the epoch journal regardless of whether
+    ///    a log was present.
     #[instrument(
         skip_all,
         fields(
@@ -748,9 +771,17 @@ where
         Ok(())
     }
 
-    /// Handles the last block of an epoch: computes the local DKG outcome,
-    /// compares it against the on-chain outcome, reads the validator syncers
-    /// from the contract, and returns the new [`State`] for the next epoch.
+    /// Handles the last height of an epoch.
+    ///
+    /// Returns a new [`State`] after finalizing the boundary block of the epoch.
+    ///
+    /// On reaching the boundary block of an epoch, the following steps occur:
+    /// 1. Reads the on-chain DKG outcome embedded in the boundary block.
+    /// 2. Computes the local DKG outcome from the dealer logs collected
+    ///    during the epoch and compares it against the on-chain result.
+    /// 3. Records whether the ceremony was a success or failure.
+    /// 4. Reads the next set of validators from the smart contract.
+    /// 5. Returns the new state that drives the next epoch's DKG round.
     #[instrument(
         skip_all,
         fields(
