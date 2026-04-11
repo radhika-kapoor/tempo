@@ -121,9 +121,7 @@ pub(crate) fn assert_no_dkg_failures(context: &Context) {
     }
 }
 
-/// Sums the value of every metric whose name ends with `suffix` across all
-/// validator metric lines.  Useful for asserting that a counter has been
-/// incremented by at least one node.
+/// Aggregates the values of all metrics matching the given name suffix across all validators.
 pub(crate) fn sum_metric_with_suffix(context: &Context, suffix: &str) -> u64 {
     let metrics = context.encode();
     let mut total = 0u64;
