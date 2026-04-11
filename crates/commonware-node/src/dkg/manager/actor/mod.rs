@@ -131,7 +131,8 @@ where
     metrics: Metrics,
 }
 
-/// Bundles all arguments for [`Actor::handle_finalized_block`] except `cause`.
+/// Groups the mutable and immutable references needed to process a
+/// finalized block during an epoch transition.
 struct FinalizedBlockContext<'a, TStorageContext, TSender>
 where
     TStorageContext: commonware_runtime::Metrics + Clock + commonware_runtime::Storage,
@@ -611,7 +612,7 @@ where
     ///   DKG shares and respond with an ack.
     /// + exact middle of an epoch: if we are a dealer, generate the dealer log
     ///   of the DKG ceremony.
-    /// + second half of the epoch: read dealer logs from blocks
+    /// + second half of the epoch: read dealer logs from blocks.
     #[instrument(
         parent = &cause,
         skip_all,
